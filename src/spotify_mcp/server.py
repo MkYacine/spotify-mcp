@@ -187,6 +187,55 @@ async def handle_call_tool(
                             type="text",
                             text="Skipped to next track."
                         )]
+                    case "seek_forward":
+                        seconds = int(arguments.get("seconds", 30))
+                        logger.info(f"Seeking forward {seconds} seconds")
+                        spotify_client.seek_forward(seconds=seconds)
+                        return [types.TextContent(
+                            type="text",
+                            text=f"Seeked forward {seconds} seconds."
+                        )]
+                    
+                    case "seek_backward":
+                        seconds = int(arguments.get("seconds", 30))
+                        logger.info(f"Seeking backward {seconds} seconds")
+                        spotify_client.seek_backward(seconds=seconds)
+                        return [types.TextContent(
+                            type="text",
+                            text=f"Seeked backward {seconds} seconds."
+                        )]
+                    
+                    case "seek_absolute":
+                        position_ms = arguments.get("position_ms")
+                        if position_ms is None:
+                            logger.error("position_ms is required for seek_absolute action.")
+                            return [types.TextContent(
+                                type="text",
+                                text="position_ms is required for seek_absolute action."
+                            )]
+                        position_ms = int(position_ms)
+                        logger.info(f"Seeking to absolute position {position_ms}ms")
+                        spotify_client.seek_absolute(position_ms=position_ms)
+                        return [types.TextContent(
+                            type="text",
+                            text=f"Seeked to position {position_ms}ms."
+                        )]
+                    
+                    case "set_volume":
+                        volume = arguments.get("volume")
+                        if volume is None:
+                            logger.error("volume is required for set_volume action.")
+                            return [types.TextContent(
+                                type="text",
+                                text="volume is required for set_volume action."
+                            )]
+                        volume = int(volume)
+                        logger.info(f"Setting volume to {volume}%")
+                        spotify_client.set_volume(volume_percent=volume)
+                        return [types.TextContent(
+                            type="text",
+                            text=f"Volume set to {volume}%."
+                        )]
 
             case "Search":
                 logger.info(f"Performing search with arguments: {arguments}")

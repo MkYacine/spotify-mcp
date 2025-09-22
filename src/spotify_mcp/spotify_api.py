@@ -135,12 +135,12 @@ class Client:
     def get_current_track(self) -> Optional[Dict]:
         """Get information about the currently playing track or episode"""
         try:
-            current = self.sp.current_user_playing_track()
+            current = self.sp.current_playback(additional_types="episode")
             if not current:
                 self.logger.info("No playbook session found")
                 return None
             
-            current_type = current.get('currently_playing_type', 'track')
+            current_type = current.get('currently_playing_type', 'currently_playing_type field not found') # avoid silent failure
             
             if current_type == 'track':
                 track_info = utils.parse_track(current['item'])
@@ -198,7 +198,7 @@ class Client:
     @utils.validate
     def pause_playback(self, device=None):
         """Pauses playback."""
-        playback = self.sp.current_playback()
+        playback = self.sp.current_playback(additional_types="episode")
         if playback and playback.get('is_playing'):
             self.sp.pause_playback(device.get('id') if device else None)
 
@@ -388,8 +388,80 @@ class Client:
     def previous_track(self):
         self.sp.previous_track()
 
-    def seek_to_position(self, position_ms):
-        self.sp.seek_track(position_ms=position_ms)
+    @utils.validate
+    def seek_forward(self, seconds: int = 30, device=None):
+        """
+        Seeks forward by specified number of seconds.
+        - seconds: Number of seconds to seek forward (default: 30)
+        """
+        try:
+            current = self.sp.current_playback(additional_types="episode")
+            if not current or not current.get('item'):
+                raise ValueError(f"No track currently playing {current}")
+            
+            current_position = current.get('progress_ms', 0)
+            track_duration = current['item'].get('duration_ms', 0)
+            new_position = min(current_position + (seconds * 1000), track_duration)
+            
+            self.logger.info(f"Seeking forward {seconds}s from {current_position}ms to {new_position}ms")
+            self.sp.seek_track(position_ms=new_position, device_id=device.get('id') if device else None)
+        except Exception as e:
+            self.logger.error(f"Error seeking forward: {str(e)}")
+            raise
 
-    def set_volume(self, volume_percent):
-        self.sp.volume(volume_percent)
+    @utils.validate
+    def seek_backward(self, seconds: int = 30, device=None):
+        """
+        Seeks backward by specified number of seconds.
+        - seconds: Number of seconds to seek backward (default: 30)
+        """
+        try:
+            current = self.sp.current_playback(additional_types="episode")
+            if not current or not current.get('item'):
+                raise ValueError("No track currently playing")
+            
+            current_position = current.get('progress_ms', 0)
+            new_position = max(current_position - (seconds * 1000), 0)
+            
+            self.logger.info(f"Seeking backward {seconds}s from {current_position}ms to {new_position}ms")
+            self.sp.seek_track(position_ms=new_position, device_id=device.get('id') if device else None)
+        except Exception as e:
+            self.logger.error(f"Error seeking backward: {str(e)}")
+            raise
+
+    @utils.validate
+    def seek_absolute(self, position_ms: int, device=None):
+        """
+        Seeks to absolute position in milliseconds.
+        - position_ms: Position in milliseconds to seek to
+        """
+        try:
+            current = self.sp.current_playback(additional_types="episode")
+            if not current or not current.get('item'):
+                raise ValueError("No track currently playing")
+            
+            track_duration = current['item'].get('duration_ms', 0)
+            if position_ms > track_duration:
+                raise ValueError(f"Position {position_ms}ms exceeds track duration {track_duration}ms")
+            
+            self.logger.info(f"Seeking to absolute position {position_ms}ms")
+            self.sp.seek_track(position_ms=position_ms, device_id=device.get('id') if device else None)
+        except Exception as e:
+            self.logger.error(f"Error seeking to position: {str(e)}")
+            raise
+
+    @utils.validate  
+    def set_volume(self, volume_percent: int, device=None):
+        """
+        Sets playback volume.
+        - volume_percent: Volume level from 0 to 100
+        """
+        try:
+            if not 0 <= volume_percent <= 100:
+                raise ValueError("Volume must be between 0 and 100")
+            
+            self.logger.info(f"Setting volume to {volume_percent}%")
+            self.sp.volume(volume_percent, device_id=device.get('id') if device else None)
+        except Exception as e:
+            self.logger.error(f"Error setting volume: {str(e)}")
+            raise
