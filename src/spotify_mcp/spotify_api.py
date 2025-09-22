@@ -1,3 +1,4 @@
+# src/spotify_mcp/spotify_api.py
 import logging
 import os
 from typing import Optional, Dict, List
@@ -78,7 +79,7 @@ class Client:
     def get_info(self, item_uri: str) -> dict:
         """
         Returns more info about item.
-        - item_uri: uri. Looks like 'spotify:track:xxxxxx', 'spotify:album:xxxxxx', etc.
+        - item_uri: uri. Looks like 'spotify:track:xxxxxx', 'spotify:album:xxxxxx', 'spotify:show:xxxxxx', 'spotify:episode:xxxxxx', etc.
         """
         _, qtype, item_id = item_uri.split(":")
         match qtype:
@@ -98,7 +99,6 @@ class Client:
                 parsed_info = utils.parse_search_results(albums_and_tracks, qtype="album,track")
                 artist_info['top_tracks'] = parsed_info['tracks']
                 artist_info['albums'] = parsed_info['albums']
-
                 return artist_info
             case 'playlist':
                 if self.username is None:
@@ -106,29 +106,54 @@ class Client:
                 playlist = self.sp.playlist(item_id)
                 self.logger.info(f"playlist info is {playlist}")
                 playlist_info = utils.parse_playlist(playlist, self.username, detailed=True)
-
                 return playlist_info
+            case 'show':
+                show = self.sp.show(item_id)
+                show_info = utils.parse_show(show, detailed=True)
+                
+                # Fetch recent episodes for the show
+                try:
+                    episodes_data = self.sp.show_episodes(item_id, limit=10)  # Get 10 most recent episodes
+                    if episodes_data and episodes_data.get('items'):
+                        episodes = []
+                        for episode in episodes_data['items']:
+                            episodes.append(utils.parse_episode(episode))
+                        show_info['recent_episodes'] = episodes
+                except Exception as e:
+                    self.logger.error(f"Error fetching episodes for show {item_id}: {str(e)}")
+                    # Don't fail the whole request if episodes can't be fetched
+                    show_info['recent_episodes'] = []
+                
+                return show_info
+            case 'episode':
+                episode = self.sp.episode(item_id)
+                episode_info = utils.parse_episode(episode, detailed=True)
+                return episode_info
 
         raise ValueError(f"Unknown qtype {qtype}")
 
     def get_current_track(self) -> Optional[Dict]:
-        """Get information about the currently playing track"""
+        """Get information about the currently playing track or episode"""
         try:
-            # current_playback vs current_user_playing_track?
             current = self.sp.current_user_playing_track()
             if not current:
-                self.logger.info("No playback session found")
+                self.logger.info("No playbook session found")
                 return None
-            if current.get('currently_playing_type') != 'track':
-                self.logger.info("Current playback is not a track")
+            
+            current_type = current.get('currently_playing_type', 'track')
+            
+            if current_type == 'track':
+                track_info = utils.parse_track(current['item'])
+            elif current_type == 'episode':
+                track_info = utils.parse_episode(current['item'])
+            else:
+                self.logger.info(f"Current playback type '{current_type}' not supported")
                 return None
 
-            track_info = utils.parse_track(current['item'])
             if 'is_playing' in current:
                 track_info['is_playing'] = current['is_playing']
 
-            self.logger.info(
-                f"Current track: {track_info.get('name', 'Unknown')} by {track_info.get('artist', 'Unknown')}")
+            self.logger.info(f"Current {current_type}: {track_info.get('name', 'Unknown')}")
             return track_info
         except Exception as e:
             self.logger.error("Error getting current track info.")
@@ -150,7 +175,7 @@ class Client:
                     raise ValueError("No track_id provided and no current playback to resume.")
 
             if spotify_uri is not None:
-                if spotify_uri.startswith('spotify:track:'):
+                if spotify_uri.startswith('spotify:track:') or spotify_uri.startswith('spotify:episode:'):
                     uris = [spotify_uri]
                     context_uri = None
                 else:
@@ -187,12 +212,19 @@ class Client:
 
     @utils.validate
     def get_queue(self, device=None):
-        """Returns the current queue of tracks."""
+        """Returns the current queue of tracks and episodes."""
         queue_info = self.sp.queue()
         queue_info['currently_playing'] = self.get_current_track()
 
-        queue_info['queue'] = [utils.parse_track(track) for track in queue_info.pop('queue')]
-
+        # Parse queue items which can be tracks or episodes
+        parsed_queue = []
+        for item in queue_info.pop('queue'):
+            if item.get('type') == 'episode':
+                parsed_queue.append(utils.parse_episode(item))
+            else:
+                parsed_queue.append(utils.parse_track(item))
+        
+        queue_info['queue'] = parsed_queue
         return queue_info
 
     def get_liked_songs(self):

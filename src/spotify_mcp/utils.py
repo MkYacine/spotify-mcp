@@ -1,3 +1,4 @@
+# src/spotify_mcp/utils.py
 from collections import defaultdict
 from typing import Optional, Dict
 import functools
@@ -139,6 +140,14 @@ def parse_search_results(results: Dict, qtype: str, username: Optional[str] = No
                 for idx, item in enumerate(results['albums']['items']):
                     if not item: continue
                     _results['albums'].append(parse_album(item))
+            case "show":
+                for idx, item in enumerate(results['shows']['items']):
+                    if not item: continue
+                    _results['shows'].append(parse_show(item))
+            case "episode":
+                for idx, item in enumerate(results['episodes']['items']):
+                    if not item: continue
+                    _results['episodes'].append(parse_episode(item))
             case _:
                 raise ValueError(f"Unknown qtype {qtype}")
 
@@ -160,6 +169,45 @@ def parse_tracks(items: Dict) -> list:
         tracks.append(parse_track(item['track']))
     return tracks
 
+def parse_show(show_item: dict, detailed=False) -> Optional[dict]:
+    if not show_item:
+        return None
+    narrowed_item = {
+        'name': show_item['name'],
+        'id': show_item['id'],
+        'publisher': show_item.get('publisher'),
+        'total_episodes': show_item.get('total_episodes', 0),
+    }
+    
+    if detailed:
+        narrowed_item['description'] = show_item.get('description')
+        narrowed_item['languages'] = show_item.get('languages', [])
+        narrowed_item['explicit'] = show_item.get('explicit', False)
+        # Note: recent_episodes will be added separately in get_info()
+            
+    return narrowed_item
+
+def parse_episode(episode_item: dict, detailed=False) -> Optional[dict]:
+    if not episode_item:
+        return None
+    narrowed_item = {
+        'name': episode_item['name'],
+        'id': episode_item['id'],
+        'duration_ms': episode_item.get('duration_ms'),
+        'release_date': episode_item.get('release_date'),
+    }
+    
+    if detailed:
+        narrowed_item['description'] = episode_item.get('description')
+        narrowed_item['language'] = episode_item.get('language')
+        narrowed_item['explicit'] = episode_item.get('explicit', False)
+        narrowed_item['is_playable'] = episode_item.get('is_playable', True)
+        
+        # Add resume point if available
+        if 'resume_point' in episode_item:
+            narrowed_item['resume_point'] = episode_item['resume_point']
+            
+    return narrowed_item
 
 def build_search_query(base_query: str,
                        artist: Optional[str] = None,

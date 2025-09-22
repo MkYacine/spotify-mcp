@@ -1,3 +1,4 @@
+# src/spotify_mcp/server.py
 import asyncio
 import base64
 import os
@@ -56,12 +57,18 @@ class Playback(ToolModel):
     - start: Starts playing new item or resumes current playback if called with no uri.
     - pause: Pauses current playback.
     - skip: Skips current track.
+    - seek_forward: Seeks forward by specified seconds.
+    - seek_backward: Seeks backward by specified seconds.
+    - seek_absolute: Seeks to absolute position in milliseconds.
+    - set_volume: Sets playback volume (0-100).
     """
-    action: str = Field(description="Action to perform: 'get', 'start', 'pause' or 'skip'.")
+    action: str = Field(description="Action to perform: 'get', 'start', 'pause', 'skip', 'seek_forward', 'seek_backward', 'seek_absolute', or 'set_volume'.")
     spotify_uri: Optional[str] = Field(default=None, description="Spotify uri of item to play for 'start' action. " +
                                                                  "If omitted, resumes current playback.")
     num_skips: Optional[int] = Field(default=1, description="Number of tracks to skip for `skip` action.")
-
+    seconds: Optional[int] = Field(default=30, description="Number of seconds to seek for 'seek_forward' and 'seek_backward' actions.")
+    position_ms: Optional[int] = Field(default=None, description="Absolute position in milliseconds for 'seek_absolute' action.")
+    volume: Optional[int] = Field(default=None, description="Volume level (0-100) for 'set_volume' action.")
 
 class Queue(ToolModel):
     """Manage the playback queue - get the queue or add tracks."""
@@ -70,17 +77,18 @@ class Queue(ToolModel):
 
 
 class GetInfo(ToolModel):
-    """Get detailed information about a Spotify item (track, album, artist, or playlist)."""
+    """Get detailed information about a Spotify item (track, album, artist, playlist, show, or episode)."""
     item_uri: str = Field(description="URI of the item to get information about. " +
                                       "If 'playlist' or 'album', returns its tracks. " +
-                                      "If 'artist', returns albums and top tracks.")
+                                      "If 'artist', returns albums and top tracks. " +
+                                      "If 'show', returns episodes.")
 
 
 class Search(ToolModel):
-    """Search for tracks, albums, artists, or playlists on Spotify."""
+    """Search for tracks, albums, artists, playlists, shows, or episodes on Spotify."""
     query: str = Field(description="query term")
     qtype: Optional[str] = Field(default="track",
-                                 description="Type of items to search for (track, album, artist, playlist, " +
+                                 description="Type of items to search for (track, album, artist, playlist, show, episode, " +
                                              "or comma-separated combination)")
     limit: Optional[int] = Field(default=10, description="Maximum number of items to return")
 
