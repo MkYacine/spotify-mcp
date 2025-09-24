@@ -465,3 +465,76 @@ class Client:
         except Exception as e:
             self.logger.error(f"Error setting volume: {str(e)}")
             raise
+    
+    @utils.validate
+    def transfer_playback(self, device_id: str, start_playback: bool = True, device=None):
+        """
+        Transfer playback to a specific device.
+        - device_id: ID of the device to transfer playback to
+        - start_playback: Whether to start playback on the new device
+        """
+        try:
+            self.logger.info(f"Transferring playback to device {device_id}, start_playback={start_playback}")
+            self.sp.transfer_playback(device_id=device_id, force_play=start_playback)
+            self.logger.info("Playback transfer completed successfully")
+        except Exception as e:
+            self.logger.error(f"Error transferring playback: {str(e)}")
+            raise
+
+    def get_available_devices(self) -> List[Dict]:
+        """
+        Get list of available devices that can be controlled.
+        Returns parsed device information.
+        """
+        try:
+            devices_data = self.sp.devices()
+            if not devices_data or 'devices' not in devices_data:
+                return []
+            
+            devices = []
+            for device in devices_data['devices']:
+                parsed_device = {
+                    'id': device['id'],
+                    'name': device['name'],
+                    'type': device['type'],
+                    'is_active': device['is_active'],
+                    'is_private_session': device.get('is_private_session', False),
+                    'is_restricted': device.get('is_restricted', False),
+                    'volume_percent': device.get('volume_percent'),
+                    'supports_volume': device.get('supports_volume', False)
+                }
+                devices.append(parsed_device)
+            
+            self.logger.info(f"Found {len(devices)} available devices")
+            return devices
+        except Exception as e:
+            self.logger.error(f"Error getting devices: {str(e)}")
+            raise
+
+    def get_active_device(self) -> Optional[Dict]:
+        """
+        Get information about the currently active device.
+        """
+        try:
+            devices = self.get_available_devices()
+            for device in devices:
+                if device['is_active']:
+                    return device
+            return None
+        except Exception as e:
+            self.logger.error(f"Error getting active device: {str(e)}")
+            raise
+
+    def set_preferred_device(self, device_id: str):
+        """
+        Set a device as preferred for this session.
+        This is a local preference that can be used by other methods.
+        """
+        self.preferred_device_id = device_id
+        self.logger.info(f"Set preferred device to {device_id}")
+
+    def get_preferred_device_id(self) -> Optional[str]:
+        """
+        Get the preferred device ID for this session.
+        """
+        return getattr(self, 'preferred_device_id', None)

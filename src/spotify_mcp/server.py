@@ -110,6 +110,16 @@ class Playlist(ToolModel):
     description: Optional[str] = Field(default=None, description="Description for the playlist.")
     public: Optional[bool] = Field(default=True, description="Whether the playlist should be public (for create action).")
 
+class Device(ToolModel):
+    """Manage Spotify Connect devices and playback transfer.
+    - list: Get available devices that can be controlled.
+    - transfer: Transfer playback to a specific device.
+    - set_active: Set a device as the preferred active device for this session.
+    - get_active: Get information about the currently active device.
+    """
+    action: str = Field(description="Action to perform: 'list', 'transfer', 'set_active', or 'get_active'.")
+    device_id: Optional[str] = Field(default=None, description="Device ID for 'transfer' and 'set_active' actions.")
+    start_playback: Optional[bool] = Field(default=True, description="Whether to start playback on transfer (default: True).")
 
 @server.list_prompts()
 async def handle_list_prompts() -> list[types.Prompt]:
@@ -125,13 +135,13 @@ async def handle_list_resources() -> list[types.Resource]:
 async def handle_list_tools() -> list[types.Tool]:
     """List available tools."""
     logger.info("Listing available tools")
-    # await server.request_context.session.send_notification("are you recieving this notification?")
     tools = [
         Playback.as_tool(),
         Search.as_tool(),
         Queue.as_tool(),
         GetInfo.as_tool(),
         Playlist.as_tool(),
+        Device.as_tool(),
     ]
     logger.info(f"Available tools: {[tool.name for tool in tools]}")
     return tools
@@ -408,6 +418,74 @@ async def handle_call_tool(
                             type="text",
                             text=f"Unknown playlist action: {action}."
                                  "Supported actions are: get, get_tracks, add_tracks, remove_tracks, change_details, create."
+                        )]
+            case "Device":
+                logger.info(f"Device operation with arguments: {arguments}")
+                action = arguments.get("action")
+                match action:
+                    case "list":
+                        logger.info("Getting available devices")
+                        devices = spotify_client.get_available_devices()
+                        return [types.TextContent(
+                            type="text",
+                            text=json.dumps(devices, indent=2)
+                        )]
+                    
+                    case "transfer":
+                        device_id = arguments.get("device_id")
+                        if not device_id:
+                            logger.error("device_id is required for transfer action.")
+                            return [types.TextContent(
+                                type="text",
+                                text="device_id is required for transfer action."
+                            )]
+                        
+                        start_playback = arguments.get("start_playback", True)
+                        logger.info(f"Transferring playback to device {device_id}")
+                        spotify_client.transfer_playback(
+                            device_id=device_id,
+                            start_playback=start_playback
+                        )
+                        return [types.TextContent(
+                            type="text",
+                            text=f"Playback transferred to device {device_id}."
+                        )]
+                    
+                    case "set_active":
+                        device_id = arguments.get("device_id")
+                        if not device_id:
+                            logger.error("device_id is required for set_active action.")
+                            return [types.TextContent(
+                                type="text",
+                                text="device_id is required for set_active action."
+                            )]
+                        
+                        logger.info(f"Setting preferred device to {device_id}")
+                        spotify_client.set_preferred_device(device_id)
+                        return [types.TextContent(
+                            type="text",
+                            text=f"Set {device_id} as preferred device for this session."
+                        )]
+                    
+                    case "get_active":
+                        logger.info("Getting currently active device")
+                        active_device = spotify_client.get_active_device()
+                        if active_device:
+                            return [types.TextContent(
+                                type="text",
+                                text=json.dumps(active_device, indent=2)
+                            )]
+                        else:
+                            return [types.TextContent(
+                                type="text",
+                                text="No active device found."
+                            )]
+                    
+                    case _:
+                        return [types.TextContent(
+                            type="text",
+                            text=f"Unknown device action: {action}. "
+                                 "Supported actions are: list, transfer, set_active, get_active."
                         )]
             case _:
                 error_msg = f"Unknown tool: {name}"
